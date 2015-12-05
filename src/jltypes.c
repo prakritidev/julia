@@ -66,6 +66,7 @@ jl_value_t *jl_nothing;
 
 int jl_is_type(jl_value_t *v)
 {
+    // unmanaged safe
     jl_value_t *t = jl_typeof(v);
     return (t == (jl_value_t*)jl_datatype_type || t == (jl_value_t*)jl_uniontype_type ||
             t == (jl_value_t*)jl_typector_type);
@@ -73,11 +74,13 @@ int jl_is_type(jl_value_t *v)
 
 STATIC_INLINE int is_unspec(jl_datatype_t *dt)
 {
+    // unmanaged safe
     return (jl_datatype_t*)dt->name->primary == dt;
 }
 
 static int jl_has_typevars__(jl_value_t *v, int incl_wildcard, jl_value_t **p, size_t np)
 {
+    // unmanaged safe
     size_t i;
     if (jl_typeis(v, jl_tvar_type)) {
         if (jl_has_typevars__(((jl_tvar_t*)v)->ub, incl_wildcard, p, np) ||
@@ -125,30 +128,35 @@ static int jl_has_typevars__(jl_value_t *v, int incl_wildcard, jl_value_t **p, s
 
 JL_DLLEXPORT int jl_has_typevars_(jl_value_t *v, int incl_wildcard)
 {
+    // unmanaged safe
     if (jl_is_typevar(v)) return 1;
     return jl_has_typevars__(v, incl_wildcard, NULL, 0);
 }
 
 static int jl_has_typevars_from(jl_value_t *v, jl_svec_t *p)
 {
+    // unmanaged safe
     if (jl_svec_len(p) == 0) return 0;
     return jl_has_typevars__(v, 0, jl_svec_data(p), jl_svec_len(p));
 }
 
 static int jl_has_typevars_from_v(jl_value_t *v, jl_value_t **p, size_t np)
 {
+    // unmanaged safe
     if (np == 0) return 0;
     return jl_has_typevars__(v, 0, p, np);
 }
 
 JL_DLLEXPORT int jl_has_typevars(jl_value_t *v)
 {
+    // unmanaged safe
     if (jl_is_typevar(v)) return 1;
     return jl_has_typevars__(v, 0, NULL, 0);
 }
 
 JL_DLLEXPORT int jl_is_leaf_type(jl_value_t *v)
 {
+    // unmanaged safe
     if (jl_is_datatype(v)) {
         if (((jl_datatype_t*)v)->abstract) {
             if (jl_is_type_type(v))
@@ -180,6 +188,7 @@ static int type_eqv_(jl_value_t *a, jl_value_t *b);
 // size_t and pass back value, else return false
 JL_DLLEXPORT int jl_get_size(jl_value_t *val, size_t *pnt)
 {
+    // unmanaged safe
     if (jl_is_long(val)) {
         ssize_t slen = jl_unbox_long(val);
         if (slen < 0)
@@ -193,6 +202,7 @@ JL_DLLEXPORT int jl_get_size(jl_value_t *val, size_t *pnt)
 
 static int count_union_components(jl_value_t **types, size_t n)
 {
+    // unmanaged safe
     size_t i, c=0;
     for(i=0; i < n; i++) {
         jl_value_t *e = types[i];
@@ -209,6 +219,7 @@ static int count_union_components(jl_value_t **types, size_t n)
 
 static void flatten_type_union(jl_value_t **types, size_t n, jl_value_t **out, size_t *idx)
 {
+    // managed only
     size_t i;
     for(i=0; i < n; i++) {
         jl_value_t *e = types[i];
@@ -217,6 +228,7 @@ static void flatten_type_union(jl_value_t **types, size_t n, jl_value_t **out, s
             flatten_type_union(jl_svec_data(ts), jl_svec_len(ts), out, idx);
         }
         else {
+            // Out is a GC stack frame. No write barrier needed
             out[*idx] = e;
             (*idx)++;
         }
@@ -225,6 +237,7 @@ static void flatten_type_union(jl_value_t **types, size_t n, jl_value_t **out, s
 
 static int union_elt_morespecific(const void *a, const void *b)
 {
+    // managed only
     jl_value_t *va = *(jl_value_t**)a;
     jl_value_t *vb = *(jl_value_t**)b;
     if (jl_args_morespecific(va, vb))
@@ -242,6 +255,7 @@ int inside_typedef = 0;
 
 static jl_svec_t *jl_compute_type_union(jl_value_t **types, size_t ntypes)
 {
+    // managed only
     size_t n = count_union_components(types, ntypes);
     jl_value_t **temp;
     JL_GC_PUSHARGS(temp, n+1);
@@ -285,6 +299,7 @@ static jl_svec_t *jl_compute_type_union(jl_value_t **types, size_t ntypes)
 
 static jl_value_t *jl_type_union_v(jl_value_t **ts, size_t n)
 {
+    // unmanaged safe
     if (n == 0) return (jl_value_t*)jl_bottom_type;
     size_t i;
     for(i=0; i < n; i++) {
@@ -293,6 +308,8 @@ static jl_value_t *jl_type_union_v(jl_value_t **ts, size_t n)
             jl_type_error_rt("Union", "parameter", (jl_value_t*)jl_type_type, pi);
     }
     if (n == 1) return ts[0];
+    if (jl_gc_state())
+        return NULL;
     jl_svec_t *types = jl_compute_type_union(ts, n);
     if (jl_svec_len(types) == 0) return (jl_value_t*)jl_bottom_type;
     if (jl_svec_len(types) == 1) return jl_svecref(types, 0);
@@ -306,6 +323,7 @@ static jl_value_t *jl_type_union_v(jl_value_t **ts, size_t n)
 
 JL_DLLEXPORT jl_value_t *jl_type_union(jl_svec_t *types)
 {
+    // unmanaged safe
     return jl_type_union_v(jl_svec_data(types), jl_svec_len(types));
 }
 
@@ -323,6 +341,7 @@ typedef struct {
 
 STATIC_INLINE int is_bnd(jl_tvar_t *tv, cenv_t *env)
 {
+    // unmanaged safe
     if (env->tvars == jl_emptysvec)
         return tv->bound;
     if (jl_is_typevar(env->tvars))
@@ -336,11 +355,13 @@ STATIC_INLINE int is_bnd(jl_tvar_t *tv, cenv_t *env)
 
 STATIC_INLINE int is_btv(jl_value_t *v)
 {
+    // unmanaged safe
     return jl_is_typevar(v) && ((jl_tvar_t*)v)->bound;
 }
 
 static void extend_(jl_value_t *var, jl_value_t *val, cenv_t *soln, int allowself)
 {
+    // unmanaged safe
     if (!allowself && var == val)
         return;
     for(int i=0; i < soln->n; i+=2) {
@@ -359,6 +380,7 @@ static void extend_(jl_value_t *var, jl_value_t *val, cenv_t *soln, int allowsel
 
 static void extend(jl_value_t *var, jl_value_t *val, cenv_t *soln)
 {
+    // unmanaged safe
     extend_(var, val, soln, 0);
 }
 
@@ -368,6 +390,7 @@ static jl_value_t *jl_type_intersect(jl_value_t *a, jl_value_t *b,
 static jl_value_t *intersect_union(jl_uniontype_t *a, jl_value_t *b,
                                    cenv_t *penv, cenv_t *eqc, variance_t var)
 {
+    // managed only
     int eq0 = eqc->n, co0 = penv->n;
     size_t i, l = jl_svec_len(a->types);
     // shortcut an easy case: union contains type b
@@ -411,6 +434,7 @@ static jl_value_t *intersect_union(jl_uniontype_t *a, jl_value_t *b,
 // if returns with *bot!=0, then intersection is Union{}
 static size_t tuple_intersect_size(jl_svec_t *a, jl_svec_t *b, int *bot)
 {
+    // unmanaged safe
     size_t al = jl_svec_len(a);
     size_t bl = jl_svec_len(b);
     *bot = 0;
@@ -436,6 +460,7 @@ static size_t tuple_intersect_size(jl_svec_t *a, jl_svec_t *b, int *bot)
 
 jl_datatype_t *jl_wrap_vararg(jl_value_t *t)
 {
+    // managed only
     jl_value_t *env[2];
     env[0] = jl_tparam0(jl_vararg_type);
     env[1] = t;
@@ -445,6 +470,7 @@ jl_datatype_t *jl_wrap_vararg(jl_value_t *t)
 static jl_value_t *intersect_tuple(jl_datatype_t *a, jl_datatype_t *b,
                                    cenv_t *penv, cenv_t *eqc, variance_t var)
 {
+    // managed only
     jl_svec_t *ap = a->parameters, *bp = b->parameters;
     size_t al = jl_svec_len(ap), bl = jl_svec_len(bp);
     int bot=0;
@@ -503,6 +529,7 @@ static jl_value_t *intersect_tuple(jl_datatype_t *a, jl_datatype_t *b,
 static jl_value_t *intersect_tag(jl_datatype_t *a, jl_datatype_t *b,
                                  cenv_t *penv, cenv_t *eqc, variance_t var)
 {
+    // managed only
     assert(a->name == b->name);
     assert(jl_svec_len(a->parameters) == jl_svec_len(b->parameters));
     jl_svec_t *p = jl_alloc_svec(jl_svec_len(a->parameters));
@@ -599,6 +626,7 @@ static jl_value_t *intersect_tag(jl_datatype_t *a, jl_datatype_t *b,
 
 static long meet_tuple_lengths(long bv, long vv, int *bot)
 {
+    // unmanaged safe
     /*
       do a meet over the lattice of tuple lengths:
                        >=0
@@ -651,6 +679,7 @@ static jl_value_t *meet_tvars(jl_tvar_t *a, jl_tvar_t *b);
 static jl_value_t *intersect_typevar(jl_tvar_t *a, jl_value_t *b,
                                      cenv_t *penv, cenv_t *eqc, variance_t var)
 {
+    // managed only
     jl_value_t *both=NULL;
     jl_tvar_t *new_b=NULL;
     JL_GC_PUSH3(&b, &both, &new_b);
@@ -789,6 +818,7 @@ static jl_value_t *intersect_typevar(jl_tvar_t *a, jl_value_t *b,
 
 static jl_value_t *approxify_type(jl_datatype_t *dt, jl_svec_t *pp)
 {
+    // managed only
     size_t i, l = jl_svec_len(dt->parameters);
     jl_svec_t *p = jl_alloc_svec(l);
     JL_GC_PUSH1(&p);
@@ -811,6 +841,7 @@ static jl_datatype_t *inst_tupletype_unchecked_uncached(jl_svec_t *p);
 static jl_value_t *jl_type_intersect(jl_value_t *a, jl_value_t *b,
                                      cenv_t *penv, cenv_t *eqc, variance_t var)
 {
+    // managed only
     if (jl_is_typector(a))
         a = (jl_value_t*)((jl_typector_t*)a)->body;
     if (jl_is_typector(b))
@@ -1096,10 +1127,13 @@ static jl_value_t *jl_type_intersect(jl_value_t *a, jl_value_t *b,
 
 JL_DLLEXPORT jl_value_t *jl_type_intersection(jl_value_t *a, jl_value_t *b)
 {
+    // unmanaged safe
+    int8_t gc_state = jl_gc_unsafe_enter();
     jl_svec_t *env = jl_emptysvec;
     JL_GC_PUSH1(&env);
     jl_value_t *ti = jl_type_intersection_matching(a, b, &env, jl_emptysvec);
     JL_GC_POP();
+    jl_gc_unsafe_leave(gc_state);
     return ti;
 }
 
@@ -1151,6 +1185,7 @@ JL_DLLEXPORT jl_value_t *jl_type_intersection(jl_value_t *a, jl_value_t *b)
 
 static jl_value_t **tvar_lookup(cenv_t *env, jl_value_t **pX)
 {
+    // unmanaged safe
     jl_value_t *v = *pX;
     if (is_btv(v)) {
         for(int i=0; i < env->n; i+=2) {
@@ -1166,6 +1201,7 @@ static jl_value_t **tvar_lookup(cenv_t *env, jl_value_t **pX)
 
 static jl_value_t *meet_tvars(jl_tvar_t *a, jl_tvar_t *b)
 {
+    // managed only
     jl_value_t *lb=NULL, *ub=NULL;
     if (type_eqv_((jl_value_t*)a->lb, (jl_value_t*)b->lb) &&
         type_eqv_((jl_value_t*)a->ub, (jl_value_t*)b->ub))
@@ -1192,6 +1228,7 @@ static jl_value_t *meet_tvars(jl_tvar_t *a, jl_tvar_t *b)
 
 static jl_value_t *meet_tvar(jl_tvar_t *tv, jl_value_t *ty)
 {
+    // managed only
     if (jl_is_typevar(ty))
         return (jl_value_t*)meet_tvars(tv, (jl_tvar_t*)ty);
     //if (jl_types_equal((jl_value_t*)tv->ub, ty))
@@ -1217,6 +1254,7 @@ static jl_value_t *meet_tvar(jl_tvar_t *tv, jl_value_t *ty)
 
 static jl_value_t *meet(jl_value_t *X, jl_value_t *Y, variance_t var)
 {
+    // managed only
     if (jl_is_typevar(X)) {
         jl_value_t *tv;
         if (jl_is_typevar(Y)) {
@@ -1248,6 +1286,7 @@ static jl_value_t *meet(jl_value_t *X, jl_value_t *Y, variance_t var)
 // might temporarily represent this type as {Type{Int},} for more precision.
 static jl_value_t *type_to_static_parameter_value(jl_value_t *t, jl_value_t *tv, jl_value_t **tvs, int ntv)
 {
+    // managed only
     int i;
     for(i=0; i < ntv; i++) {
         if (tv == tvs[i])
@@ -1292,6 +1331,7 @@ void print_env(cenv_t *soln)
 
 static int solve_tvar_constraints(cenv_t *env, cenv_t *soln, jl_value_t **tvs, int ntv)
 {
+    // managed only
     jl_value_t *rt1=NULL, *rt2=NULL, *S=NULL;
     JL_GC_PUSH3(&rt1, &rt2, &S);
 
@@ -1436,6 +1476,7 @@ static int solve_tvar_constraints(cenv_t *env, cenv_t *soln, jl_value_t **tvs, i
 jl_value_t *jl_type_intersection_matching(jl_value_t *a, jl_value_t *b,
                                           jl_svec_t **penv, jl_svec_t *tvars)
 {
+    // managed only
     jl_value_t **rts;
     JL_GC_PUSHARGS(rts, 2 + 2*MAX_CENV_SIZE);
     cenv_t eqc; eqc.n = 0; eqc.data = &rts[2];
@@ -1603,11 +1644,13 @@ jl_value_t *jl_type_intersection_matching(jl_value_t *a, jl_value_t *b,
 
 static int extensionally_same_type(jl_value_t *a, jl_value_t *b)
 {
+    // unmanaged safe
     return jl_subtype(a, b, 0) && jl_subtype(b, a, 0);
 }
 
 static int type_eqv__(jl_value_t *a, jl_value_t *b, int distinguish_tctor)
 {
+    // unmanaged safe
     if (a == b) return 1;
     if (distinguish_tctor && jl_is_typector(a) != jl_is_typector(b)) return 0;
     if (jl_is_typector(a)) a = (jl_value_t*)((jl_typector_t*)a)->body;
@@ -1652,17 +1695,20 @@ static int type_eqv__(jl_value_t *a, jl_value_t *b, int distinguish_tctor)
 
 static int type_eqv_(jl_value_t *a, jl_value_t *b)
 {
+    // unmanaged safe
     return type_eqv__(a, b, 0);
 }
 
 JL_DLLEXPORT int jl_types_equal(jl_value_t *a, jl_value_t *b)
 {
+    // unmanaged safe
     return type_eqv_(a, b);
 }
 
 static int type_le_generic(jl_value_t *a, jl_value_t *b, int useenv)
 {
-    jl_value_t *env = jl_type_match(a, b);
+    // managed only
+    jl_value_t *env = jl_type_match(a, b); // Invalid in unmanged mode
     if (env == jl_false) return 0;
     size_t l = jl_svec_len(env);
     // make sure all typevars correspond to other unique typevars
@@ -1684,11 +1730,13 @@ static int type_le_generic(jl_value_t *a, jl_value_t *b, int useenv)
 
 int jl_types_equal_generic(jl_value_t *a, jl_value_t *b, int useenv)
 {
+    // managed only
     return type_le_generic(a, b, useenv) && type_le_generic(b, a, useenv);
 }
 
 static int valid_type_param(jl_value_t *v)
 {
+    // unmanaged safe
     if (jl_is_tuple(v)) {
         // NOTE: tuples of symbols are not currently bits types, but have been
         // allowed as type parameters. this is a bit ugly.
@@ -1708,6 +1756,7 @@ static int valid_type_param(jl_value_t *v)
 
 jl_value_t *jl_apply_type_(jl_value_t *tc, jl_value_t **params, size_t n)
 {
+    // managed only
     if (tc == (jl_value_t*)jl_anytuple_type)
         return (jl_value_t*)jl_apply_tuple_type_v(params, n);
     if (tc == (jl_value_t*)jl_uniontype_type)
@@ -1732,6 +1781,7 @@ jl_value_t *jl_apply_type_(jl_value_t *tc, jl_value_t **params, size_t n)
         stprimary = (jl_datatype_t*)((jl_datatype_t*)tc)->name->primary;
     }
     for(i=0; i < n; i++) {
+        jl_gc_safepoint();
         jl_value_t *pi = params[i];
         if (!valid_type_param(pi)) {
             jl_type_error_rt(tname, "parameter",
@@ -1759,6 +1809,7 @@ jl_value_t *jl_apply_type_(jl_value_t *tc, jl_value_t **params, size_t n)
     JL_GC_PUSHARGS(env, 2*ntp);
     size_t ne = 0;
     for(i=0; i < ntp; i++) {
+        jl_gc_safepoint();
         jl_tvar_t *tv = (jl_tvar_t*)jl_svecref(tp,i);
         if (!jl_is_typevar(tv))
             continue;
@@ -1796,17 +1847,23 @@ jl_value_t *jl_apply_type_(jl_value_t *tc, jl_value_t **params, size_t n)
 
 JL_DLLEXPORT jl_value_t *jl_apply_type(jl_value_t *tc, jl_svec_t *params)
 {
+    // unmanaged safe
     // NOTE: callers are supposed to root these arguments, but there are
     // several uses that don't, so root here just to be safe.
+    int8_t gc_state = jl_gc_unsafe_enter();
     JL_GC_PUSH1(&params);
     jl_value_t *t = jl_apply_type_(tc, jl_svec_data(params), jl_svec_len(params));
     JL_GC_POP();
+    jl_gc_unsafe_leave(gc_state);
     return t;
 }
 
 JL_DLLEXPORT jl_value_t *jl_tupletype_fill(size_t n, jl_value_t *v)
 {
+    // unmanaged safe
     // TODO: replace with just using NTuple
+    if (jl_gc_state())
+        return NULL;
     jl_value_t *p = NULL;
     JL_GC_PUSH1(&p);
     p = (jl_value_t*)jl_svec_fill(n, v);
@@ -1817,6 +1874,7 @@ JL_DLLEXPORT jl_value_t *jl_tupletype_fill(size_t n, jl_value_t *v)
 
 static int contains_unions(jl_value_t *type)
 {
+    // unmanaged safe
     if (jl_is_uniontype(type)) return type != jl_bottom_type;
     if (jl_is_typector(type)) return contains_unions(((jl_typector_t*)type)->body);
     if (!jl_is_datatype(type)) return 0;
@@ -1832,6 +1890,7 @@ static int contains_unions(jl_value_t *type)
 // a total order based on UIDs and object_id.
 static int is_typekey_ordered(jl_value_t **key, size_t n)
 {
+    // unmanaged safe
     size_t i;
     for(i=0; i < n; i++) {
         jl_value_t *k = key[i];
@@ -1848,6 +1907,7 @@ static int is_typekey_ordered(jl_value_t **key, size_t n)
 // ordered comparison of types
 static int typekey_compare(jl_datatype_t *tt, jl_value_t **key, size_t n)
 {
+    // unmanaged safe
     size_t j;
     if (tt == NULL) return -1;  // place NULLs at end to allow padding for fast growing
     size_t tnp = jl_nparams(tt);
@@ -1871,6 +1931,7 @@ static int typekey_compare(jl_datatype_t *tt, jl_value_t **key, size_t n)
 
 static int typekey_eq(jl_datatype_t *tt, jl_value_t **key, size_t n)
 {
+    // unmanaged safe
     size_t j;
     size_t tnp = jl_nparams(tt);
     if (n != tnp) return 0;
@@ -1889,6 +1950,7 @@ JL_DEFINE_MUTEX_EXT(typecache);
 // ~n, where n is the index where the type should be inserted.
 static ssize_t lookup_type_idx(jl_typename_t *tn, jl_value_t **key, size_t n, int ordered)
 {
+    // unmanaged safe
     if (n==0) return -1;
     if (ordered) {
         jl_svec_t *cache = tn->cache;
@@ -1925,6 +1987,7 @@ static ssize_t lookup_type_idx(jl_typename_t *tn, jl_value_t **key, size_t n, in
 
 static jl_value_t *lookup_type(jl_typename_t *tn, jl_value_t **key, size_t n)
 {
+    // unmanaged safe
     int ord = is_typekey_ordered(key, n);
     JL_LOCK(typecache); // Might GC
     ssize_t idx = lookup_type_idx(tn, key, n, ord);
@@ -1940,12 +2003,14 @@ void jl_set_t_uid_ctr(int i) { t_uid_ctr=i; }
 
 int jl_assign_type_uid(void)
 {
+    // unmanaged safe
     assert(t_uid_ctr != 0);
     return JL_ATOMIC_FETCH_AND_ADD(t_uid_ctr, 1);
 }
 
 static int is_cacheable(jl_datatype_t *type)
 {
+    // unmanaged safe
     // only cache concrete types
     assert(jl_is_datatype(type));
     jl_svec_t *t = type->parameters;
@@ -1970,6 +2035,7 @@ static int is_cacheable(jl_datatype_t *type)
 
 static void cache_insert_type(jl_value_t *type, ssize_t insert_at, int ordered)
 {
+    // managed only
     assert(jl_is_datatype(type));
     // assign uid if it hasn't been done already
     if (!jl_is_abstracttype(type) && ((jl_datatype_t*)type)->uid==0)
@@ -2007,6 +2073,7 @@ static void cache_insert_type(jl_value_t *type, ssize_t insert_at, int ordered)
 
 jl_value_t *jl_cache_type_(jl_datatype_t *type)
 {
+    // managed only
     if (is_cacheable(type)) {
         int ord = is_typekey_ordered(jl_svec_data(type->parameters), jl_svec_len(type->parameters));
         JL_LOCK(typecache); // Might GC
@@ -2034,6 +2101,7 @@ static jl_svec_t *inst_all(jl_svec_t *p, jl_value_t **env, size_t n,
 static jl_value_t *lookup_type_stack(jl_typestack_t *stack, jl_datatype_t *tt, size_t ntp,
                                      jl_value_t **iparams)
 {
+    // unmanaged safe
     // if an identical instantiation is already in process somewhere up the
     // stack, return it. this computes a fixed point for recursive types.
     jl_typename_t *tn = tt->name;
@@ -2053,6 +2121,7 @@ static jl_value_t *inst_datatype(jl_datatype_t *dt, jl_svec_t *p, jl_value_t **i
                                  int cacheable, int isabstract, jl_typestack_t *stack,
                                  jl_value_t **env, size_t n)
 {
+    // managed only
     jl_typestack_t top;
     jl_typename_t *tn = dt->name;
     jl_value_t *tc = tn->primary;
@@ -2159,6 +2228,7 @@ static jl_value_t *inst_datatype(jl_datatype_t *dt, jl_svec_t *p, jl_value_t **i
 
 static void check_tuple_parameter(jl_value_t *pi, size_t i, size_t np)
 {
+    // unmanaged safe
     // TODO: should possibly only allow Types and TypeVars, but see
     // https://github.com/JuliaLang/julia/commit/85f45974a581ab9af955bac600b90d9ab00f093b#commitcomment-13041922
     if (!valid_type_param(pi))
@@ -2169,6 +2239,7 @@ static void check_tuple_parameter(jl_value_t *pi, size_t i, size_t np)
 
 static jl_tupletype_t *jl_apply_tuple_type_v_(jl_value_t **p, size_t np, jl_svec_t *params)
 {
+    // unmanaged safe
     int isabstract = 0, cacheable = 1;
     for(size_t i=0; i < np; i++) {
         jl_value_t *pi = p[i];
@@ -2179,39 +2250,47 @@ static jl_tupletype_t *jl_apply_tuple_type_v_(jl_value_t **p, size_t np, jl_svec
             cacheable = 0;
     }
     cacheable &= (!isabstract);
+    int8_t gc_state = jl_gc_unsafe_enter();
     jl_datatype_t *ndt = (jl_datatype_t*)inst_datatype(jl_anytuple_type, params, p, np,
                                                        cacheable, isabstract, NULL, NULL, 0);
+    jl_gc_unsafe_leave(gc_state);
     return ndt;
 }
 
 JL_DLLEXPORT jl_tupletype_t *jl_apply_tuple_type(jl_svec_t *params)
 {
+    // unmanaged safe
     return jl_apply_tuple_type_v_(jl_svec_data(params), jl_svec_len(params), params);
 }
 
 JL_DLLEXPORT jl_tupletype_t *jl_apply_tuple_type_v(jl_value_t **p, size_t np)
 {
+    // unmanaged safe
     return jl_apply_tuple_type_v_(p, np, NULL);
 }
 
 jl_datatype_t *jl_inst_concrete_tupletype(jl_svec_t *p)
 {
+    // managed only
     return (jl_datatype_t*)inst_datatype(jl_anytuple_type, p, jl_svec_data(p), jl_svec_len(p), 1, 0, NULL, NULL, 0);
 }
 
 jl_datatype_t *jl_inst_concrete_tupletype_v(jl_value_t **p, size_t np)
 {
+    // managed only
     return (jl_datatype_t*)inst_datatype(jl_anytuple_type, NULL, p, np, 1, 0, NULL, NULL, 0);
 }
 
 static jl_datatype_t *inst_tupletype_unchecked_uncached(jl_svec_t *p)
 {
+    // managed only
     return (jl_datatype_t*)inst_datatype(jl_anytuple_type, p, jl_svec_data(p), jl_svec_len(p), 0, 1, NULL, NULL, 0);
 }
 
 static jl_svec_t *inst_all(jl_svec_t *p, jl_value_t **env, size_t n,
                            jl_typestack_t *stack, int check)
 {
+    // managed only
     size_t i;
     size_t lp = jl_svec_len(p);
     jl_svec_t *np = jl_alloc_svec(lp);
@@ -2226,6 +2305,7 @@ static jl_svec_t *inst_all(jl_svec_t *p, jl_value_t **env, size_t n,
 static jl_value_t *inst_tuple_w_(jl_value_t *t, jl_value_t **env, size_t n,
                                  jl_typestack_t *stack, int check)
 {
+    // managed only
     jl_datatype_t *tt = (jl_datatype_t*)t;
     jl_svec_t *tp = tt->parameters;
     size_t ntp = jl_svec_len(tp);
@@ -2265,6 +2345,7 @@ static jl_value_t *inst_tuple_w_(jl_value_t *t, jl_value_t **env, size_t n,
 static jl_value_t *inst_type_w_(jl_value_t *t, jl_value_t **env, size_t n,
                                 jl_typestack_t *stack, int check)
 {
+    // managed only
     size_t i, j;
     if (n == 0) return t;
     if (jl_is_typevar(t)) {
@@ -2346,11 +2427,13 @@ static jl_value_t *inst_type_w_(jl_value_t *t, jl_value_t **env, size_t n,
 
 jl_value_t *jl_instantiate_type_with(jl_value_t *t, jl_value_t **env, size_t n)
 {
+    // managed only
     return inst_type_w_((jl_value_t*)t, env, n, NULL, 1);
 }
 
 jl_datatype_t *jl_wrap_Type(jl_value_t *t)
 {
+    // managed only
     jl_value_t *env[2];
     env[0] = jl_tparam0(jl_type_type);
     //if (jl_is_typector(t))
@@ -2363,6 +2446,7 @@ jl_datatype_t *jl_wrap_Type(jl_value_t *t)
 
 void jl_reinstantiate_inner_types(jl_datatype_t *t)
 {
+    // managed only
     jl_typestack_t top;
     assert(jl_is_datatype(t));
     top.tt = t;
@@ -2386,6 +2470,7 @@ static int jl_subtype_le(jl_value_t *a, jl_value_t *b, int ta, int invariant);
 static int jl_tuple_subtype_(jl_value_t **child, size_t cl,
                              jl_datatype_t *pdt, int ta, int invariant)
 {
+    // unmanaged safe
     size_t pl = jl_nparams(pdt);
     jl_value_t **parent = jl_svec_data(pdt->parameters);
     size_t ci=0, pi=0;
@@ -2415,11 +2500,13 @@ static int jl_tuple_subtype_(jl_value_t **child, size_t cl,
 
 int jl_tuple_subtype(jl_value_t **child, size_t cl, jl_datatype_t *pdt, int ta)
 {
+    // unmanaged safe
     return jl_tuple_subtype_(child, cl, pdt, ta, 0);
 }
 
 static int tuple_all_subtype(jl_datatype_t *t, jl_value_t *super, int ta, int invariant)
 {
+    // unmanaged safe
     size_t ci;
     for(ci=0; ci < jl_nparams(t); ci++) {
         jl_value_t *ce = jl_tparam(t,ci);
@@ -2434,6 +2521,7 @@ static int tuple_all_subtype(jl_datatype_t *t, jl_value_t *super, int ta, int in
 //  ta specifies whether typeof() should be implicitly applied to a.
 static int jl_subtype_le(jl_value_t *a, jl_value_t *b, int ta, int invariant)
 {
+    // unmanaged safe
     if (!ta&&jl_is_typector(a)) a = (jl_value_t*)((jl_typector_t*)a)->body;
     if (jl_is_typector(b)) b = (jl_value_t*)((jl_typector_t*)b)->body;
     if (ta) {
@@ -2591,11 +2679,13 @@ static int jl_subtype_le(jl_value_t *a, jl_value_t *b, int ta, int invariant)
 
 JL_DLLEXPORT int jl_subtype(jl_value_t *a, jl_value_t *b, int ta)
 {
+    // unmanaged safe
     return jl_subtype_le(a, b, ta, 0);
 }
 
 int jl_subtype_invariant(jl_value_t *a, jl_value_t *b, int ta)
 {
+    // unmanaged safe
     return jl_subtype_le(a, b, ta, 1);
 }
 
@@ -2605,6 +2695,7 @@ static int jl_type_morespecific_(jl_value_t *a, jl_value_t *b, int invariant);
 
 static int jl_tuple_morespecific_(jl_datatype_t *cdt, jl_datatype_t *pdt, int invariant)
 {
+    // unmanaged safe
     size_t cl = jl_nparams(cdt);
     jl_value_t **child = jl_svec_data(cdt->parameters);
     size_t pl = jl_nparams(pdt);
@@ -2659,6 +2750,7 @@ static int jl_tuple_morespecific_(jl_datatype_t *cdt, jl_datatype_t *pdt, int in
 
 static int tuple_all_morespecific(jl_datatype_t *t, jl_value_t *super, int invariant)
 {
+    // unmanaged safe
     size_t ci;
     for(ci=0; ci < jl_nparams(t); ci++) {
         jl_value_t *ce = jl_tparam(t,ci);
@@ -2672,6 +2764,7 @@ static int tuple_all_morespecific(jl_datatype_t *t, jl_value_t *super, int invar
 
 static int partially_morespecific(jl_value_t *a, jl_value_t *b, int invariant)
 {
+    // unmanaged safe
     if (jl_is_uniontype(b)) {
         jl_svec_t *bp = ((jl_uniontype_t*)b)->types;
         size_t i, l=jl_svec_len(bp);
@@ -2689,6 +2782,7 @@ static int partially_morespecific(jl_value_t *a, jl_value_t *b, int invariant)
 
 static int jl_type_morespecific_(jl_value_t *a, jl_value_t *b, int invariant)
 {
+    // unmanaged safe
     if (jl_is_typector(a)) a = (jl_value_t*)((jl_typector_t*)a)->body;
     if (jl_is_typector(b)) b = (jl_value_t*)((jl_typector_t*)b)->body;
     if (a == b) {
@@ -2832,6 +2926,7 @@ static int jl_type_morespecific_(jl_value_t *a, jl_value_t *b, int invariant)
 
 JL_DLLEXPORT int jl_type_morespecific(jl_value_t *a, jl_value_t *b)
 {
+    // unmanaged safe
     return jl_type_morespecific_(a, b, 0);
 }
 
@@ -2846,6 +2941,7 @@ static jl_value_t *type_match_(jl_value_t *child, jl_value_t *parent,
 static jl_value_t *tuple_match(jl_datatype_t *child, jl_datatype_t *parent,
                                cenv_t *env, int morespecific, int invariant)
 {
+    // managed only
     size_t ci=0, pi=0;
     size_t cl = jl_nparams(child);
     size_t pl = jl_nparams(parent);
@@ -2900,6 +2996,7 @@ static jl_value_t *tuple_match(jl_datatype_t *child, jl_datatype_t *parent,
 static jl_value_t *type_match_(jl_value_t *child, jl_value_t *parent,
                                cenv_t *env, int morespecific, int invariant)
 {
+    // managed only
     jl_value_t *tmp, *tmp2;
     invariant = invariant & type_match_invariance_mask;
     if (jl_is_typector(child))
@@ -3129,27 +3226,39 @@ static jl_value_t *type_match_(jl_value_t *child, jl_value_t *parent,
 */
 jl_value_t *jl_type_match_(jl_value_t *a, jl_value_t *b, int morespecific)
 {
+    // unmanaged safe
     jl_value_t **rts;
+    int8_t gc_state = jl_gc_unsafe_enter();
     JL_GC_PUSHARGS(rts, MAX_CENV_SIZE);
     cenv_t env; env.n = 0; env.data = rts;
     jl_value_t *m = type_match_(a, b, &env, morespecific, 0);
     if (m != jl_false) {
+#ifdef JULIA_ENABLE_THREADING
+        if (gc_state) {
+            JL_GC_POP();
+            jl_gc_unsafe_leave(gc_state);
+            return NULL;
+        }
+#endif
         m = (jl_value_t*)jl_alloc_svec_uninit(env.n);
         for(int i=0; i < env.n; i++) {
             jl_svecset(m, i, env.data[i]);
         }
     }
     JL_GC_POP();
+    jl_gc_unsafe_leave(gc_state);
     return m;
 }
 
 jl_value_t *jl_type_match(jl_value_t *a, jl_value_t *b)
 {
+    // unmanaged safe
     return jl_type_match_(a, b, 0);
 }
 
 jl_value_t *jl_type_match_morespecific(jl_value_t *a, jl_value_t *b)
 {
+    // unmanaged safe
     return jl_type_match_(a, b, 1);
 }
 
@@ -3158,6 +3267,9 @@ jl_value_t *jl_type_match_morespecific(jl_value_t *a, jl_value_t *b)
 JL_DLLEXPORT jl_tvar_t *jl_new_typevar_(jl_sym_t *name, jl_value_t *lb,
                                         jl_value_t *ub, jl_value_t *b)
 {
+    // unmanaged safe
+    if (jl_gc_state())
+        return NULL;
     jl_tvar_t *tv = (jl_tvar_t*)newobj((jl_value_t*)jl_tvar_type, 4);
     tv->name = name;
     tv->lb = lb;
@@ -3169,11 +3281,13 @@ JL_DLLEXPORT jl_tvar_t *jl_new_typevar_(jl_sym_t *name, jl_value_t *lb,
 JL_DLLEXPORT jl_tvar_t *jl_new_typevar(jl_sym_t *name, jl_value_t *lb,
                                        jl_value_t *ub)
 {
+    // unmanaged safe
     return jl_new_typevar_(name, lb, ub, jl_false);
 }
 
 static jl_tvar_t *tvar(const char *name)
 {
+    // unmanaged safe
     return jl_new_typevar(jl_symbol(name), (jl_value_t*)jl_bottom_type,
                           (jl_value_t*)jl_any_type);
 }

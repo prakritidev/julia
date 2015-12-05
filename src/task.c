@@ -258,6 +258,7 @@ static void NOINLINE JL_NORETURN start_task(void)
 #ifdef COPY_STACKS
 void NOINLINE jl_set_base_ctx(char *__stk)
 {
+    // unmanaged safe
     jl_stackbase = (char*)(((uptrint_t)__stk + sizeof(*__stk))&-16); // also ensures stackbase is 16-byte aligned
 #ifndef ASM_COPY_STACKS
     if (jl_setjmp(jl_base_ctx, 1)) {
@@ -269,6 +270,7 @@ void NOINLINE jl_set_base_ctx(char *__stk)
 
 JL_DLLEXPORT void julia_init(JL_IMAGE_SEARCH rel)
 {
+    // unmanaged safe
     // keep this function small, since we want to keep the stack frame
     // leading up to this also quite small
     _julia_init(rel);
@@ -280,6 +282,7 @@ JL_DLLEXPORT void julia_init(JL_IMAGE_SEARCH rel)
 
 static void ctx_switch(jl_task_t *t, jl_jmp_buf *where)
 {
+    // managed only
     if (t == jl_current_task)
         return;
     /*
@@ -367,6 +370,7 @@ static void ctx_switch(jl_task_t *t, jl_jmp_buf *where)
 
 JL_DLLEXPORT jl_value_t *jl_switchto(jl_task_t *t, jl_value_t *arg)
 {
+    // unmanaged safe
     if (t == jl_current_task) {
         throw_if_exception_set(t);
         return arg;
@@ -492,6 +496,7 @@ static int frame_info_from_ip(char **func_name,
                               char **inlinedat_file, size_t *inlinedat_line,
                               size_t ip, int skipC, int skipInline)
 {
+    // unmanaged safe
     // This function is not allowed to reference any TLS variables since
     // it can be called from an unmanaged thread on OSX.
     static const char *name_unknown = "???";
@@ -713,6 +718,9 @@ static void record_backtrace(void)
 static jl_value_t *array_ptr_void_type = NULL;
 JL_DLLEXPORT jl_value_t *jl_backtrace_from_here(void)
 {
+    // unmanaged safe
+    if (jl_gc_state())
+        return NULL;
     jl_svec_t *tp = NULL;
     jl_array_t *bt = NULL;
     JL_GC_PUSH2(&tp, &bt);
@@ -730,6 +738,9 @@ JL_DLLEXPORT jl_value_t *jl_backtrace_from_here(void)
 
 JL_DLLEXPORT jl_value_t *jl_lookup_code_address(void *ip, int skipC)
 {
+    // unmanaged safe
+    if (jl_gc_state())
+        return NULL;
     char *func_name;
     size_t line_num;
     char *file_name;
@@ -755,6 +766,9 @@ JL_DLLEXPORT jl_value_t *jl_lookup_code_address(void *ip, int skipC)
 
 JL_DLLEXPORT jl_value_t *jl_get_backtrace(void)
 {
+    // unmanaged safe
+    if (jl_gc_state())
+        return NULL;
     jl_svec_t *tp = NULL;
     jl_array_t *bt = NULL;
     JL_GC_PUSH2(&tp, &bt);
@@ -771,6 +785,7 @@ JL_DLLEXPORT jl_value_t *jl_get_backtrace(void)
 //for looking up functions from gdb:
 JL_DLLEXPORT void jl_gdblookup(ptrint_t ip)
 {
+    // unmanaged safe
     // This function is not allowed to reference any TLS variables since
     // it can be called from an unmanaged thread on OSX.
     char *func_name;
@@ -808,6 +823,7 @@ JL_DLLEXPORT void jl_gdblookup(ptrint_t ip)
 
 JL_DLLEXPORT void jlbacktrace(void)
 {
+    // unmanaged safe
     size_t n = jl_bt_size; // jl_bt_size > 40 ? 40 : jl_bt_size;
     for (size_t i=0; i < n; i++)
         jl_gdblookup(jl_bt_data[i]);
@@ -815,6 +831,7 @@ JL_DLLEXPORT void jlbacktrace(void)
 
 JL_DLLEXPORT void jl_gdbbacktrace(void)
 {
+    // unmanaged safe
     record_backtrace();
     jlbacktrace();
 }
@@ -823,6 +840,7 @@ JL_DLLEXPORT void jl_gdbbacktrace(void)
 // yield to exception handler
 void JL_NORETURN throw_internal(jl_value_t *e)
 {
+    // unmanaged safe
     jl_gc_unsafe_enter();
     assert(e != NULL);
     jl_exception_in_transit = e;
@@ -842,6 +860,7 @@ void JL_NORETURN throw_internal(jl_value_t *e)
 // record backtrace and raise an error
 JL_DLLEXPORT void jl_throw(jl_value_t *e)
 {
+    // unmanaged safe
     assert(e != NULL);
     record_backtrace();
     throw_internal(e);
@@ -849,6 +868,7 @@ JL_DLLEXPORT void jl_throw(jl_value_t *e)
 
 JL_DLLEXPORT void jl_rethrow(void)
 {
+    // unmanaged safe
     throw_internal(jl_exception_in_transit);
 }
 
@@ -859,6 +879,9 @@ JL_DLLEXPORT void jl_rethrow_other(jl_value_t *e)
 
 JL_DLLEXPORT jl_task_t *jl_new_task(jl_function_t *start, size_t ssize)
 {
+    // unmanaged safe
+    if (jl_gc_state())
+        return NULL;
     size_t pagesz = jl_page_size;
     jl_task_t *t = (jl_task_t*)jl_gc_allocobj(sizeof(jl_task_t));
     jl_set_typeof(t, jl_task_type);
@@ -912,6 +935,7 @@ JL_DLLEXPORT jl_task_t *jl_new_task(jl_function_t *start, size_t ssize)
 
 JL_CALLABLE(jl_unprotect_stack)
 {
+    // unmanaged safe
 #ifndef COPY_STACKS
     jl_task_t *t = (jl_task_t*)args[0];
     size_t pagesz = jl_page_size;
@@ -924,6 +948,7 @@ JL_CALLABLE(jl_unprotect_stack)
 
 JL_DLLEXPORT jl_value_t *jl_get_current_task(void)
 {
+    // unmanaged safe
     return (jl_value_t*)jl_current_task;
 }
 

@@ -52,6 +52,7 @@ static jl_value_t *close_cb = NULL;
 
 static void jl_uv_call_close_callback(void *val)
 {
+    // unmanaged safe
     jl_value_t *cb;
     if (!jl_old_base_module) {
         if (close_cb == NULL)
@@ -67,6 +68,7 @@ static void jl_uv_call_close_callback(void *val)
 
 JL_DLLEXPORT void jl_uv_closeHandle(uv_handle_t *handle)
 {
+    // unmanaged safe
     // if the user killed a stdio handle,
     // revert back to direct stdio FILE* writes
     // so that errors can still be reported
@@ -84,6 +86,7 @@ JL_DLLEXPORT void jl_uv_closeHandle(uv_handle_t *handle)
 
 JL_DLLEXPORT void jl_uv_shutdownCallback(uv_shutdown_t *req, int status)
 {
+    // unmanaged safe
     /*
      * This happens if the remote machine closes the connecition while we're
      * in the shutdown request (in that case we call uv_close, thus cancelling
@@ -111,6 +114,7 @@ JL_DLLEXPORT void *jl_uv_write_handle(uv_write_t *req) { return req->handle; }
 
 JL_DLLEXPORT int jl_run_once(uv_loop_t *loop)
 {
+    // unmanaged safe
     if (loop) {
         loop->stop_flag = 0;
         return uv_run(loop,UV_RUN_ONCE);
@@ -120,6 +124,7 @@ JL_DLLEXPORT int jl_run_once(uv_loop_t *loop)
 
 JL_DLLEXPORT void jl_run_event_loop(uv_loop_t *loop)
 {
+    // unmanaged safe
     if (loop) {
         loop->stop_flag = 0;
         uv_run(loop,UV_RUN_DEFAULT);
@@ -128,6 +133,7 @@ JL_DLLEXPORT void jl_run_event_loop(uv_loop_t *loop)
 
 JL_DLLEXPORT int jl_process_events(uv_loop_t *loop)
 {
+    // unmanaged safe
     if (loop) {
         loop->stop_flag = 0;
         return uv_run(loop,UV_RUN_NOWAIT);
@@ -138,6 +144,7 @@ JL_DLLEXPORT int jl_process_events(uv_loop_t *loop)
 JL_DLLEXPORT int jl_init_pipe(uv_pipe_t *pipe, int writable, int readable,
                               int julia_only)
 {
+    // unmanaged safe
      int flags = 0;
      if (writable)
          flags |= UV_PIPE_WRITABLE;
@@ -151,6 +158,7 @@ JL_DLLEXPORT int jl_init_pipe(uv_pipe_t *pipe, int writable, int readable,
 
 JL_DLLEXPORT void jl_close_uv(uv_handle_t *handle)
 {
+    // unmanaged safe
     if (handle->type == UV_FILE) {
         uv_fs_t req;
         jl_uv_file_t *fd = (jl_uv_file_t*)handle;
@@ -195,17 +203,20 @@ JL_DLLEXPORT void jl_close_uv(uv_handle_t *handle)
 
 JL_DLLEXPORT void jl_forceclose_uv(uv_handle_t *handle)
 {
+    // unmanaged safe
     uv_close(handle,&jl_uv_closeHandle);
 }
 
 JL_DLLEXPORT void jl_uv_associate_julia_struct(uv_handle_t *handle,
                                                jl_value_t *data)
 {
+    // unmanaged safe
     handle->data = data;
 }
 
 JL_DLLEXPORT void jl_uv_disassociate_julia_struct(uv_handle_t *handle)
 {
+    // unmanaged safe
     handle->data = NULL;
 }
 
@@ -216,6 +227,7 @@ JL_DLLEXPORT int jl_spawn(char *name, char **argv, uv_loop_t *loop,
                           uv_handle_type stderr_type, uv_pipe_t *stderr_pipe,
                           int flags, char **env, char *cwd, uv_exit_cb cb)
 {
+    // unmanaged safe
     uv_process_options_t opts;
     uv_stdio_container_t stdio[3];
     int error;
@@ -245,6 +257,7 @@ JL_DLLEXPORT int jl_spawn(char *name, char **argv, uv_loop_t *loop,
 #include <time.h>
 JL_DLLEXPORT struct tm* localtime_r(const time_t *t, struct tm *tm)
 {
+    // unmanaged safe
     struct tm *tmp = localtime(t); //localtime is reentrant on windows
     if (tmp)
         *tm = *tmp;
@@ -254,11 +267,13 @@ JL_DLLEXPORT struct tm* localtime_r(const time_t *t, struct tm *tm)
 
 JL_DLLEXPORT uv_loop_t *jl_global_event_loop(void)
 {
+    // unmanaged safe
     return jl_io_loop;
 }
 
 JL_DLLEXPORT int jl_fs_unlink(char *path)
 {
+    // unmanaged safe
     uv_fs_t req;
     JL_SIGATOMIC_BEGIN();
     int ret = uv_fs_unlink(jl_io_loop, &req, path, NULL);
@@ -269,6 +284,7 @@ JL_DLLEXPORT int jl_fs_unlink(char *path)
 
 JL_DLLEXPORT int jl_fs_rename(const char *src_path, const char *dst_path)
 {
+    // unmanaged safe
     uv_fs_t req;
     JL_SIGATOMIC_BEGIN();
     int ret = uv_fs_rename(jl_io_loop, &req, src_path, dst_path, NULL);
@@ -280,6 +296,7 @@ JL_DLLEXPORT int jl_fs_rename(const char *src_path, const char *dst_path)
 JL_DLLEXPORT int jl_fs_sendfile(int src_fd, int dst_fd,
                                 int64_t in_offset, size_t len)
 {
+    // unmanaged safe
     uv_fs_t req;
     JL_SIGATOMIC_BEGIN();
     int ret = uv_fs_sendfile(jl_io_loop, &req, dst_fd, src_fd,
@@ -291,6 +308,7 @@ JL_DLLEXPORT int jl_fs_sendfile(int src_fd, int dst_fd,
 
 JL_DLLEXPORT int jl_fs_symlink(char *path, char *new_path, int flags)
 {
+    // unmanaged safe
     uv_fs_t req;
     int ret = uv_fs_symlink(jl_io_loop, &req, path, new_path, flags, NULL);
     uv_fs_req_cleanup(&req);
@@ -299,6 +317,7 @@ JL_DLLEXPORT int jl_fs_symlink(char *path, char *new_path, int flags)
 
 JL_DLLEXPORT int jl_fs_chmod(char *path, int mode)
 {
+    // unmanaged safe
     uv_fs_t req;
     int ret = uv_fs_chmod(jl_io_loop, &req, path, mode, NULL);
     uv_fs_req_cleanup(&req);
@@ -308,6 +327,7 @@ JL_DLLEXPORT int jl_fs_chmod(char *path, int mode)
 JL_DLLEXPORT int jl_fs_write(int handle, const char *data, size_t len,
                              int64_t offset)
 {
+    // unmanaged safe
     if (jl_in_jl_)
         return write(handle, data, len);
     uv_fs_t req;
@@ -321,6 +341,7 @@ JL_DLLEXPORT int jl_fs_write(int handle, const char *data, size_t len,
 
 JL_DLLEXPORT int jl_fs_read(int handle, char *data, size_t len)
 {
+    // unmanaged safe
     uv_fs_t req;
     uv_buf_t buf[1];
     buf[0].base = data;
@@ -332,6 +353,7 @@ JL_DLLEXPORT int jl_fs_read(int handle, char *data, size_t len)
 
 JL_DLLEXPORT int jl_fs_read_byte(int handle)
 {
+    // unmanaged safe
     uv_fs_t req;
     char c;
     uv_buf_t buf[1];
@@ -351,6 +373,7 @@ JL_DLLEXPORT int jl_fs_read_byte(int handle)
 
 JL_DLLEXPORT int jl_fs_close(int handle)
 {
+    // unmanaged safe
     uv_fs_t req;
     int ret = uv_fs_close(jl_io_loop, &req, handle, NULL);
     uv_fs_req_cleanup(&req);
@@ -360,6 +383,7 @@ JL_DLLEXPORT int jl_fs_close(int handle)
 JL_DLLEXPORT int jl_uv_write(uv_stream_t *stream, const char *data, size_t n,
                              uv_write_t *uvw, void *writecb)
 {
+    // unmanaged safe
     uv_buf_t buf[1];
     buf[0].base = (char*)data;
     buf[0].len = n;
@@ -371,6 +395,7 @@ JL_DLLEXPORT int jl_uv_write(uv_stream_t *stream, const char *data, size_t n,
 
 JL_DLLEXPORT void jl_uv_writecb(uv_write_t *req, int status)
 {
+    // unmanaged safe
     free(req);
     if (status < 0) {
         jl_safe_printf("jl_uv_writecb() ERROR: %s %s\n",
@@ -383,6 +408,7 @@ JL_DLLEXPORT void jl_uv_writecb(uv_write_t *req, int status)
 
 static void jl_write(uv_stream_t *stream, const char *str, size_t n)
 {
+    // unmanaged safe
     assert(stream);
     static_assert(offsetof(uv_stream_t,type) == offsetof(ios_t,bm) &&
         sizeof(((uv_stream_t*)0)->type) == sizeof(((ios_t*)0)->bm),
@@ -432,6 +458,7 @@ extern int vasprintf(char **str, const char *fmt, va_list ap);
 
 JL_DLLEXPORT int jl_vprintf(uv_stream_t *s, const char *format, va_list args)
 {
+    // unmanaged safe
     char *str=NULL;
     int c;
     va_list al;
@@ -453,6 +480,7 @@ JL_DLLEXPORT int jl_vprintf(uv_stream_t *s, const char *format, va_list args)
 
 JL_DLLEXPORT int jl_printf(uv_stream_t *s, const char *format, ...)
 {
+    // unmanaged safe
     va_list args;
     int c;
 
@@ -464,6 +492,7 @@ JL_DLLEXPORT int jl_printf(uv_stream_t *s, const char *format, ...)
 
 JL_DLLEXPORT void jl_safe_printf(const char *fmt, ...)
 {
+    // unmanaged safe
     static char buf[1000];
     buf[0] = '\0';
 
@@ -481,6 +510,7 @@ JL_DLLEXPORT void jl_safe_printf(const char *fmt, ...)
 
 JL_DLLEXPORT void jl_exit(int exitcode)
 {
+    // unmanaged safe
     uv_tty_reset_mode();
     jl_atexit_hook(exitcode);
     exit(exitcode);
@@ -488,6 +518,7 @@ JL_DLLEXPORT void jl_exit(int exitcode)
 
 JL_DLLEXPORT int jl_getpid(void)
 {
+    // unmanaged safe
 #ifdef _OS_WINDOWS_
     return GetCurrentProcessId();
 #else
@@ -499,6 +530,7 @@ JL_DLLEXPORT int jl_getpid(void)
 JL_DLLEXPORT int jl_tcp_bind(uv_tcp_t *handle, uint16_t port, uint32_t host,
                              unsigned int flags)
 {
+    // unmanaged safe
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(struct sockaddr_in));
     addr.sin_port = port;
@@ -510,6 +542,7 @@ JL_DLLEXPORT int jl_tcp_bind(uv_tcp_t *handle, uint16_t port, uint32_t host,
 JL_DLLEXPORT int jl_tcp_bind6(uv_tcp_t *handle, uint16_t port, void *host,
                               unsigned int flags)
 {
+    // unmanaged safe
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(struct sockaddr_in6));
     addr.sin6_port = port;
@@ -521,6 +554,7 @@ JL_DLLEXPORT int jl_tcp_bind6(uv_tcp_t *handle, uint16_t port, void *host,
 JL_DLLEXPORT int jl_tcp_getsockname(uv_tcp_t *handle, uint16_t* port,
                                     void* host, uint32_t* family)
 {
+    // unmanaged safe
     int namelen;
     struct sockaddr_storage addr;
     memset(&addr, 0, sizeof(struct sockaddr_storage));
@@ -544,6 +578,7 @@ JL_DLLEXPORT int jl_tcp_getsockname(uv_tcp_t *handle, uint16_t* port,
 JL_DLLEXPORT int jl_tcp_getpeername(uv_tcp_t *handle, uint16_t* port,
                                     void* host, uint32_t* family)
 {
+    // unmanaged safe
     int namelen;
     struct sockaddr_storage addr;
     memset(&addr, 0, sizeof(struct sockaddr_storage));
@@ -567,6 +602,7 @@ JL_DLLEXPORT int jl_tcp_getpeername(uv_tcp_t *handle, uint16_t* port,
 JL_DLLEXPORT int jl_udp_bind(uv_udp_t *handle, uint16_t port, uint32_t host,
                              uint32_t flags)
 {
+    // unmanaged safe
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(struct sockaddr_in));
     addr.sin_port = port;
@@ -578,6 +614,7 @@ JL_DLLEXPORT int jl_udp_bind(uv_udp_t *handle, uint16_t port, uint32_t host,
 JL_DLLEXPORT int jl_udp_bind6(uv_udp_t *handle, uint16_t port, void *host,
                               uint32_t flags)
 {
+    // unmanaged safe
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(struct sockaddr_in6));
     addr.sin6_port = port;
@@ -589,6 +626,7 @@ JL_DLLEXPORT int jl_udp_bind6(uv_udp_t *handle, uint16_t port, void *host,
 JL_DLLEXPORT int jl_udp_send(uv_udp_t *handle, uint16_t port, uint32_t host,
                              void *data, uint32_t size, uv_udp_send_cb cb)
 {
+    // unmanaged safe
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(struct sockaddr_in));
     addr.sin_port = port;
@@ -605,6 +643,7 @@ JL_DLLEXPORT int jl_udp_send(uv_udp_t *handle, uint16_t port, uint32_t host,
 JL_DLLEXPORT int jl_udp_send6(uv_udp_t *handle, uint16_t port, void *host,
                               void *data, uint32_t size, uv_udp_send_cb cb)
 {
+    // unmanaged safe
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(struct sockaddr_in6));
     addr.sin6_port = port;
@@ -643,6 +682,7 @@ JL_DLLEXPORT int jl_getaddrinfo(uv_loop_t *loop, const char *host,
                                 const char *service, jl_function_t *cb,
                                 uv_getaddrinfo_cb uvcb)
 {
+    // unmanaged safe
     uv_getaddrinfo_t *req = (uv_getaddrinfo_t*)malloc(sizeof(uv_getaddrinfo_t));
     struct addrinfo hints;
 
@@ -708,6 +748,7 @@ JL_DLLEXPORT void jl_sockaddr_set_port(struct sockaddr_storage *addr,
 JL_DLLEXPORT int jl_tcp4_connect(uv_tcp_t *handle,uint32_t host, uint16_t port,
                                  uv_connect_cb cb)
 {
+    // unmanaged safe
     struct sockaddr_in addr;
     uv_connect_t *req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
     req->data = 0;
@@ -721,6 +762,7 @@ JL_DLLEXPORT int jl_tcp4_connect(uv_tcp_t *handle,uint32_t host, uint16_t port,
 JL_DLLEXPORT int jl_tcp6_connect(uv_tcp_t *handle, void *host, uint16_t port,
                                  uv_connect_cb cb)
 {
+    // unmanaged safe
     struct sockaddr_in6 addr;
     uv_connect_t *req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
     req->data = 0;
@@ -793,6 +835,7 @@ static inline int ishexchar(char c)
 
 JL_DLLEXPORT int jl_ispty(uv_pipe_t *pipe)
 {
+    // unmanaged safe
     if (pipe->type != UV_NAMED_PIPE) return 0;
     size_t len = 0;
     if (uv_pipe_getsockname(pipe, NULL, &len) != UV_ENOBUFS) return 0;
@@ -824,6 +867,7 @@ JL_DLLEXPORT int jl_ispty(uv_pipe_t *pipe)
 
 JL_DLLEXPORT uv_handle_type jl_uv_handle_type(uv_handle_t *handle)
 {
+    // unmanaged safe
 #ifdef _OS_WINDOWS_
     if (jl_ispty((uv_pipe_t*)handle))
         return UV_TTY;
@@ -896,6 +940,7 @@ JL_DLLEXPORT int jl_uv_handle(uv_stream_t *handle)
 #else
 JL_DLLEXPORT HANDLE jl_uv_handle(uv_stream_t *handle)
 {
+    // unmanaged safe
     switch (handle->type) {
     case UV_TTY:
         return ((uv_tty_t*)handle)->handle;
