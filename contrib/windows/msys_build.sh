@@ -196,6 +196,7 @@ else
   echo 'NO_GIT = 1' >> Make.user
 fi
 echo 'FORCE_ASSERTIONS = 1' >> Make.user
+echo 'override JULIA_THREADS = 1' >> Make.user
 
 cat Make.user
 make VERBOSE=1
