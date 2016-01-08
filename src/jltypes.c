@@ -3612,6 +3612,7 @@ void jl_init_types(void)
     meta_sym = jl_symbol("meta");
     dots_sym = jl_symbol("...");
     list_sym = jl_symbol("list");
+    unused_sym = jl_symbol("#unused#");
 }
 
 #ifdef __cplusplus
