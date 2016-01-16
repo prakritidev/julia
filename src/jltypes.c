@@ -3328,7 +3328,7 @@ void jl_init_types(void)
                                            jl_symbol("bound")),
                                    jl_svec(4, jl_sym_type, jl_type_type,
                                            jl_type_type, jl_any_type),
-                                   0, 0, 3);
+                                   0, 1, 3);
 
     jl_svec_t *tv;
     tv = jl_svec1(tvar("T"));
